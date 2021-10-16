@@ -19,6 +19,10 @@ description:
       Cumulus Linux. Command documentation is available at
       U(https://docs.cumulusnetworks.com/cumulus-linux/System-Configuration/Network-Command-Line-Utility-NCLU/)
 options:
+    cli:
+        description:
+            - Select the cli mode. Can be either nclu or nvue.
+        default: "nclu"
     commands:
         description:
             - A list of strings containing the net commands to run. Mutually
@@ -135,6 +139,14 @@ EXAMPLES = '''
 - name: Print BGP Status In JSON
   ansible.builtin.debug:
     var: output["msg"]
+
+- name: configure vrf
+  community.network.nclu:
+    cli: nvue
+    template: |
+      {% for name in ['internal', 'external'] %}
+        set vrf {{name}} table auto
+      {% endfor %}
 '''
 
 RETURN = '''
@@ -155,8 +167,29 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 def command_helper(module, command, errmsg=None):
+    """Decide which cli to use and run it"""
+    if module.params.get('cli') == 'nvue':
+        return command_helper_nvue(module, command, errmsg)
+    else:
+        return command_helper_nclu(module, command, errmsg)
+
+
+def command_helper_nclu(module, command, errmsg):
     """Run a command, catch any nclu errors"""
     (_rc, output, _err) = module.run_command("/usr/bin/net %s" % command)
+    if _rc or 'ERROR' in output or 'ERROR' in _err:
+        module.fail_json(msg=errmsg or output)
+    return str(output)
+
+
+def command_helper_nvue(module, command, errmsg=None):
+    """Run a command, catch any nvue errors"""
+    if command.trim() == 'apply':
+        command += ' --assume-yes'
+    (_rc, output, _err) = module.run_command(
+            "/usr/bin/nv %s" % command
+    )
+    # TODO figure out how error messages with nvue look
     if _rc or 'ERROR' in output or 'ERROR' in _err:
         module.fail_json(msg=errmsg or output)
     return str(output)
@@ -225,6 +258,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
 
 def main(testing=False):
     module = AnsibleModule(argument_spec=dict(
+        cli=dict(required=False, type='str', default='nclu', choices=['nclu', 'nvue']),
         commands=dict(required=False, type='list'),
         template=dict(required=False, type='str'),
         description=dict(required=False, type='str', default="Ansible-originated commit"),
