@@ -243,6 +243,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
         _changed = True
 
     # Do the commit.
+    # TODO implement for nvue
     if (do_commit and _changed):
         result = command_helper(module, "commit description '%s'" % description)
         if "commit ignored" in result:
