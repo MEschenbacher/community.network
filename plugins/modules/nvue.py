@@ -11,31 +11,10 @@ author: "Maximilian Eschenbacher (ERNW Enno Rey Netzwerke GmbH)"
 short_description: Configure cumulus linux using nvue
 description:
 options:
-    commands:
-        description:
-            - A list of strings containing the nv commands to run. Mutually
-              exclusive with I(template).
-    template:
-        description:
-            - A single, multi-line string with jinja2 formatting. This string
-              will be broken by lines, and each line will be run through nv.
-              Mutually exclusive with I(commands).
-    detach:
-        description:
-            - Boolean. When true, perform a 'nv config detach' before the block.
-              This cleans out any uncommitted changes in the buffer.
-              Mutually exclusive with I(atomic).
-        default: false
-        type: bool
     apply:
         description:
             - When true, performs a 'nv config apply' at the end of the block.
               Mutually exclusive with I(atomic).
-        default: false
-        type: bool
-    save:
-        description:
-            - When true, performs a 'nv config save' at the end of the block.
         default: false
         type: bool
     atomic:
@@ -44,6 +23,47 @@ options:
               Mutually exclusive with I(detach) and I(apply).
         default: false
         type: bool
+    commands:
+        description:
+            - A list of strings containing the nv commands to run. Mutually
+              exclusive with I(template).
+    confirm:
+        description:
+            - If I(apply)ing a configuration, this option sets up the confirm mechanism of
+              nvue with a I(confirm_timeout) (default 10m). Implies I(apply=true).
+        type: bool
+    confirm_no:
+        description:
+            - Execute confirm no to deny the configuration and immediately rollback the
+              configuration.
+        type: bool
+    confirm_timeout:
+        description:
+            - Set the timeout after a pending confirm automatically rolls back the previous
+              configuration. Supported suffixes m (minute), s (second), h (hour). Examples:
+              10m or 30s or 1h.
+        type: str
+    confirm_yes:
+        description:
+            - Execute confirm yes to confirm the configuration and stop the rollback.
+        type: bool
+    detach:
+        description:
+            - Boolean. When true, perform a 'nv config detach' before the block.
+              This cleans out any uncommitted changes in the buffer.
+              Mutually exclusive with I(atomic).
+        default: false
+        type: bool
+    save:
+        description:
+            - When true, performs a 'nv config save' at the end of the block.
+        default: false
+        type: bool
+    template:
+        description:
+            - A single, multi-line string with jinja2 formatting. This string
+              will be broken by lines, and each line will be run through nv.
+              Mutually exclusive with I(commands).
 notes:
     - Supports check_mode. Note that when using check_mode, I(detach) is always true, I(apply)
       and I(save) is always false.
@@ -125,8 +145,20 @@ def run_nvue(module):
     if not commands:
         commands = module.params.get('template').splitlines()
     do_apply = module.params.get('apply')
+    apply_options = ''
     do_detach = module.params.get('detach')
     do_save = module.params.get('save')
+    do_confirm = module.params.get('confirm')
+    do_confirm_no = module.params.get('confirm_no')
+    confirm_timeout = module.params.get('confirm_timeout')
+    do_confirm_yes = module.params.get('confirm_yes')
+    if do_confirm:
+        do_apply = True
+        apply_options += ' --confirm ' + confirm_timeout
+    if do_confirm_yes:
+        apply_options += ' --confirm-yes'
+    if do_confirm_no:
+        apply_options += ' --confirm-no'
 
     changed = False
 
@@ -147,7 +179,7 @@ def run_nvue(module):
     # instead we use after to see if there is pending config
     if after and do_apply and not module.check_mode:
         changed = True
-        ret = command_helper(module, "config apply --assume-yes")
+        ret = command_helper(module, "config apply --assume-yes " + apply_options)
         if ret:
             output.append(ret)
 
@@ -161,16 +193,27 @@ def run_nvue(module):
 
 def main():
     module = AnsibleModule(argument_spec=dict(
-        commands=dict(required=False, type='list'),
-        template=dict(required=False, type='str'),
-        detach=dict(required=False, type='bool', default=False),
-        apply=dict(required=False, type='bool', default=False),
-        save=dict(required=False, type='bool', default=False),
-        atomic=dict(required=False, type='bool', default=False)),
+            apply=dict(required=False, type='bool', default=False),
+            atomic=dict(required=False, type='bool', default=False),
+            commands=dict(required=False, type='list', default=[]),
+            confirm=dict(required=False, type='bool', default=False),
+            confirm_no=dict(required=False, type='bool', default=False),
+            confirm_timeout=dict(required=False, type='str', default='10m'),
+            confirm_yes=dict(required=False, type='bool', default=False),
+            detach=dict(required=False, type='bool', default=False),
+            save=dict(required=False, type='bool', default=False),
+            template=dict(required=False, type='str')
+        ),
         supports_check_mode=True,
         mutually_exclusive=[
             ('commands', 'template'),
             ('apply', 'atomic'),
+            ('confirm', 'atomic'),
+            ('confirm_no', 'atomic'),
+            ('confirm_yes', 'atomic'),
+            ('confirm_no', 'confirm_yes'),
+            ('confirm', 'confirm_yes'),
+            ('confirm', 'confirm_no'),
             ('detach', 'atomic'),
         ],
     )
