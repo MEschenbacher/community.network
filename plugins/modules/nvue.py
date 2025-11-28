@@ -118,12 +118,13 @@ msg:
 from ansible.module_utils.basic import AnsibleModule
 
 
-def command_helper(module, command):
+def command_helper(module, command, ignore_exit_failure=False):
     """
-    Run a command and return stdout but hard fail on error conditions.
+    Run a command and return stdout but hard fail on error conditions if ignore_exit_failure
+    is False.
     """
     exitstatus, stdout, stderr = module.run_command("/usr/bin/nv %s" % command)
-    if exitstatus != 0:
+    if exitstatus != 0 and not ignore_exit_failure:
         module.fail_json(msg=dict(msg="Failed on line '%s'" % (command,), rc=exitstatus, stdout=stdout, stderr=stderr))
     return str(stdout).strip()
 
