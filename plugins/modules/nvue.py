@@ -139,7 +139,10 @@ def commands_helper(module, commands):
         yield command_helper(module, line)
 
 def check_pending(module):
-    return command_helper(module, "config diff")
+    # Starting somewhere between Cumulus version 5.11.3 and 5.15.0 `nv config diff' now
+    # returns 1 if a diff exists, actually replicating normal diff behaviour, however, we do
+    # not care about the exit code for diff, so we ignore it.
+    return command_helper(module, "config diff", ignore_exit_failure=True)
 
 def run_nvue(module):
     commands = module.params.get('commands')
